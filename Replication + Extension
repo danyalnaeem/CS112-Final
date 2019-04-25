@@ -1,0 +1,157 @@
+#set preferences
+options(scipen=5,digits=6)
+
+#set working directory (CHANGE THIS TO YOUR DIRECTORY)
+setwd('Desktop/CS112 FP/')
+install.packages("combinat")
+install.packages("tcltk")
+install.packages("cem")
+install.packages("cem",repos="http://r.iq.harvard.edu", type="source")
+install.packages("MatchIt")
+install.packages("RItools")
+install.packages("MNP")
+
+#load libraries
+library(foreign)
+library(cem)
+library(Matching)
+library(MatchIt)
+library(RItools)
+library(MNP)
+library(xtable)
+
+
+#load data
+
+full.data<-read.dta('debtCeilingCertified.dta')
+
+#subsets
+win.data<-subset(full.data,fullmatch==1)
+share.data<-subset(full.data,sharematch==1)
+
+### ANALYSIS WITH MATCHED SAMPLES TO TEST HYPOTHESES ###
+#analysis of seat retention
+win.rates<-table(win.data$no,win.data$winCert)
+rownames(win.rates)<-c('yes vote','no vote')
+colnames(win.rates)<-c('lost seat','kept seat')
+win.rates
+#table is for percentage of losers
+#alternative hypothesis: greater number of losers among 'yes' voters than 'no' voters
+prop.test(win.rates,alternative='greater')
+#in fact, more 'no' voters did not retain their seat
+#chi-squared (1 df)=1.3056, p=0.8734
+#two-tailed p-value also shows no discernible effect either way
+
+#analysis of two-party vote share
+#alternative hypothesis: smaller share of the two-party vote among 'yes' voters than 'no' voters
+t.test(incShare~no,data=share.data,alternative='less')
+#difference: 64.7680-62.3615=2.4065
+#t (108.352 df)=-1.5758, p=0.0590
+
+### COMPARISON TO ANALYSIS WITH FULL DATA ###
+#analysis of seat retention
+win.rates.2<-table(full.data$no,full.data$winCert)
+rownames(win.rates.2)<-c('yes vote','no vote')
+colnames(win.rates.2)<-c('lost seat','kept seat')
+win.rates
+#table is for percentage of losers
+#alternative hypothesis: greater number of losers among 'yes' voters than 'no' voters
+prop.test(win.rates.2,alternative='greater')
+#similar null result to matched analysis
+#chi-squared (1 df)=0.4424, p=0.747
+
+#analysis of two-party vote share
+#alternative hypothesis: smaller share of the two-party vote among 'yes' voters than 'no' voters
+t.test(incShare~no,data=full.data,alternative='less')
+#difference: 67.4656-62.9790=4.4866
+#t (201.386 df)=-3.7678, p=0.0001
+#larger effect: almost surely overestimates the treatment effect
+
+### ALTERNATE ESTIMATE OF TREATMENT EFFECT ###
+library(MatchIt)
+competitive<-subset(full.data,intermediate==1&!is.na(incShare)&!is.na(no),select=c(incShare,no,nominate1,obama08,inc_vote10,log_cash,inc_dem))
+prop.out<-matchit(no~nominate1*obama08*inc_vote10*log_cash*inc_dem, data=competitive); summary(prop.out)
+prop.data<-match.data(prop.out)
+t.test(incShare~no,data=prop.data,alternative='less')
+
+### GRAPHS OF DATA ###
+pdf('matchedShare.pdf',width=4,height=4,pointsize=10)
+plot(x=share.data$nominate1[share.data$no==1],y=share.data$incShare[share.data$no==1],xlim=c(-1,1),ylim=c(40,100),col='red',pch=2,xlab='NOMINATE (First Dimension)',ylab='Share of Two-Party Vote (2012)')
+points(x=share.data$nominate1[share.data$no==0],y=share.data$incShare[share.data$no==0],xlim=c(-1,1),ylim=c(40,100),pch=20)
+legend(x=0.5,y=100,c('yes','no'),pch=c(20,2),col=c('black','red'))
+dev.off()
+
+pdf('fullShare.pdf',width=4,height=4,pointsize=10)
+plot(x=full.data$nominate1[full.data$no==1],y=full.data$incShare[full.data$no==1],xlim=c(-1,1),ylim=c(40,100),col='red',pch=2,xlab='NOMINATE (First Dimension)',ylab='Share of Two-Party Vote (2012)')
+points(x=full.data$nominate1[full.data$no==0],y=full.data$incShare[full.data$no==0],xlim=c(-1,1),ylim=c(40,100),pch=20)
+legend(x=0.5,y=100,c('yes','no'),pch=c(20,2),col=c('black','red'))
+dev.off()
+
+#percent retaining seat
+win.rates
+win.rates.2
+pdf('winPercent.pdf',width=5,height=5,pointsize=10)
+full.win<-matrix(c(83.2,80.4,86.1,78.4),byrow=FALSE,nrow=2,ncol=2); full.win
+barplot(full.win,beside=TRUE,ylim=c(0,100), names.arg=c('All Members', 'Matched'), legend.text=c('yes','no'), ylab="Percent Retaining Seat", args.legend=list(pt.cex=.9,ncol=2))#x>2.5
+abline(h=0,col='gray60')
+box()
+dev.off()
+
+### MODEL OF INTERMEDIATE OUTCOMES ###
+full.data.2<-subset(full.data,intermediate<6 & !is.na(abs_nom) & !is.na(no))
+intermed.mnp<-mnp(intermediate~abs_nom+inc_vote10+obama08+log_cash+no,data=full.data.2); summary(intermed.mnp)
+full.data.yes<-full.data.no<-full.data.2
+full.data.yes$no<-0
+full.data.no$no<-1
+pred.yes<-predict(intermed.mnp,newdata=full.data.yes,type="prob") #voted yes
+pred.no<-predict(intermed.mnp,newdata=full.data.no,type="prob") #voted no
+probabilities<-rbind(apply(pred.yes$p,2,mean),apply(pred.no$p,2,mean))
+
+pdf('intermedProb.pdf',width=4,height=4,pointsize=10)
+barplot(probabilities, beside=TRUE, ylim=c(0,.7), names.arg=c('Contested','Uncontested','Lost Prim.','Retired','Higher Office'),legend.text=c('yes','no'),cex.names=.7,ylab="Predicted Probability")
+abline(h=0,col='gray60')
+box()
+dev.off()
+
+
+#Genetic Matching
+library(Matching)
+install.packages("rgenoud")
+library(rgenoud)
+library(arm)
+#removing NAs 
+full.data_gen <- full.data[complete.cases(full.data), ]
+
+head(full.data_gen)
+attach(full.data_gen)
+X = cbind( party, state,olddist,newdist,stcd_old,stcd_new,nominate1,abs_nom,obama08, dem_vote10,
+          inc_dem,unop10,cash_july11,log_cash,intermediate,incPctAP,winAP, demvote,repvote,dem,no)
+detach(full.data_gen)
+as.character(full.data_gen$yes_ceiling)
+Tr = which(full.data_gen$yes_ceiling == "1")
+Tr <- full.data_gen$yes_ceiling
+Y = full.data_gen$inc_vote10
+genout <- GenMatch(Y=Y , Tr=Tr, X=X, M=1,
+                   pop.size=220, max.generations=25, replace= FALSE)
+m_ <- Match(Y=Y , Tr=Tr, X=X, M=1, BiasAdjust = F, replace = FALSE, Weight.matrix = genout)
+summary(m_)
+#Propensity Matching
+
+glm_1 <- glm(Tr ~ party + state + olddist + newdist + stcd_old+ stcd_new+ nominate1+abs_nom+obama08+ dem_vote10+
+             inc_dem+unop10+cash_july11+log_cash+intermediate+incPctAP+winAP + demvote+repvote+dem+no, data = full.data_gen, family = binomial, maxit = 500)
+X <- glm_1$fitted.values
+Y_ <- full.data_gen$inc_vote10
+
+m  <- Match(Y=Y_, Tr=Tr, X=X, M=1, BiasAdjust = T)
+
+MB <- MatchBalance(Tr ~ party + state + olddist + newdist + stcd_old+ stcd_new+ nominate1+abs_nom+obama08+ dem_vote10+
+                     inc_dem+unop10+cash_july11+log_cash+intermediate+incPctAP+winAP + demvote+repvote+dem+no, data = full.data_gen, 
+                match.out = m, nboots=500)
+match.data(m)
+summary(m)
+MB
+install.packages("rbounds")
+binarysens(m, Gamma=1.1, GammaInc= 0.05)
+require(rbounds)
+?Match
+psens(m, Gamma=2, GammaInc= 0.05)
