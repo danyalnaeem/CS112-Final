@@ -1,0 +1,48 @@
+#set preferences
+options(scipen=5,digits=6)
+
+#set working directory (CHANGE THIS TO YOUR DIRECTORY)
+setwd('Desktop/CS112 FP/')
+install.packages("combinat")
+
+
+#Genetic Matching
+library(Matching)
+install.packages("rgenoud")
+library(rgenoud)
+library(arm)
+#removing NAs 
+full.data_gen <- full.data[complete.cases(full.data), ]
+
+head(full.data_gen)
+attach(full.data_gen)
+X = cbind( party, state,olddist,newdist,stcd_old,stcd_new,nominate1,abs_nom,obama08, dem_vote10,
+          inc_dem,unop10,cash_july11,log_cash,intermediate,incPctAP,winAP, demvote,repvote,dem,yes_ceiling)
+detach(full.data_gen)
+
+Tr <- full.data_gen$no
+Y = full.data_gen$incShare
+genout <- GenMatch(Y=Y , Tr=Tr, X=X, M=1,
+                   pop.size=220, max.generations=25, replace= FALSE)
+m_ <- Match(Y=Y , Tr=Tr, X=X, M=1, BiasAdjust = F, replace = FALSE, Weight.matrix = genout)
+summary(m_)
+#Propensity Matching
+
+glm_1 <- glm(Tr ~ party + state + olddist + newdist + stcd_old+ stcd_new+ nominate1+abs_nom+obama08+ dem_vote10+
+             inc_dem+unop10+cash_july11+log_cash+intermediate+incPctAP+winAP + demvote+repvote+dem+no, data = full.data_gen, family = binomial, maxit = 500)
+X <- glm_1$fitted.values
+Y_ <- full.data_gen$incShare
+
+m  <- Match(Y=Y_, Tr=Tr, X=X, M=1, BiasAdjust = T)
+
+MB <- MatchBalance(Tr ~ party + state + olddist + newdist + stcd_old+ stcd_new+ nominate1+abs_nom+obama08+ dem_vote10+
+                     inc_dem+unop10+cash_july11+log_cash+intermediate+incPctAP+winAP + demvote+repvote+dem+no, data = full.data_gen, 
+                match.out = m, nboots=500)
+match.data(m)
+summary(m)
+
+install.packages("rbounds")
+
+require(rbounds)
+
+psens(m, Gamma=2, GammaInc= 0.05)
