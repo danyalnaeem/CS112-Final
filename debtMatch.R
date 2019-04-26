@@ -28,6 +28,10 @@ library(xtable)
 #load data
 preVote.0<-read.dta('debtCeilingPreOutcome.dta')
 
+retireMatching <- read.csv('electionData.csv')
+retireMatching <- retireMatching$retired
+cbind(preVote.0,retireMatching)
+
 #create numeric party variable
 preVote.0$dem<-as.numeric(preVote.0$party=="D")
 
