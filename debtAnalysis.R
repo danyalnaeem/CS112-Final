@@ -20,7 +20,7 @@ library(xtable)
 
 #load data
 
-full.data<-read.csv('electionData.csv')
+full.data<-read.dta('debtCeilingCertified.dta')
 
 #subsets
 win.data<-subset(full.data,fullmatch==1)
