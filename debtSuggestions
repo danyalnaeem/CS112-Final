@@ -1,0 +1,105 @@
+#cClean up
+rm(list=ls())
+
+#set preferences
+options(scipen=20,digits=6)
+
+#set working directory (CHANGE THIS TO YOUR DIRECTORY)
+setwd('/Users/amalanandmuthukumaran/Desktop/CS112 Assignment')
+
+#load libraries
+library(foreign)
+library(xtable)
+
+#load data
+full.data<-read.dta('debtCeilingCertified.dta')
+
+#create additional variables
+full.data$zincShare<-qnorm(full.data$incShare/100)
+
+#subsets
+win.data<-subset(full.data,fullmatch==1)
+share.data<-subset(full.data,sharematch==1)
+int.data<-subset(full.data,intermediate==1)
+
+###replicate original result###
+t.test(incShare~no,data=share.data,alternative='less')
+
+###using vote share sample for seat retention###
+#matched sample
+win.rates.2<-table(share.data$no,share.data$winCert)
+rownames(win.rates.2)<-c('yes vote','no vote')
+colnames(win.rates.2)<-c('lost seat','kept seat')
+win.rates.2;win.rates.2/apply(win.rates.2,1,sum)*100
+se.2<-sqrt(apply(win.rates.2/apply(win.rates.2,1,sum),1,prod)/apply(win.rates.2,1,sum));se.2
+#Yes voters are ever-so-slightly more likely to lose, but it's not significant: 6.58% losses for yes voters, and 5.66% losses for no voters.
+
+#full sample
+win.rates.3<-table(int.data$no,int.data$winCert)
+rownames(win.rates.3)<-c('yes vote','no vote')
+colnames(win.rates.3)<-c('lost seat','kept seat')
+win.rates.3; win.rates.3/apply(win.rates.3,1,sum)*100
+se.3<-sqrt(apply(win.rates.3/apply(win.rates.3,1,sum),1,prod)/apply(win.rates.3,1,sum));se.3
+#Yes voters are ever-so-slightly more likely to lose: 7.37% losses for yes voters, and 6.31% losses for no voters.
+
+#graph
+#pdf('winPercent2.pdf',width=5,height=5,pointsize=10)
+full.win<-matrix(c(92.6,93.7,93.4,94.3),byrow=FALSE,nrow=2,ncol=2); full.win
+barplot(full.win,beside=TRUE,ylim=c(0,100), names.arg=c('All Members', 'Matched'), legend.text=c('yes','no'), ylab="Percent Retaining Seat", args.legend=list(cex=.9,ncol=2,x=4.25,y=-11.5,title="Debt Ceiling Vote"))#x>2.5
+box()
+#dev.off()
+
+### Re-examing results to test the ends-vs-middle idea ###
+t.test(incShare~no,data=share.data[share.data$nominate1>.474,],alternative='less')
+t.test(incShare~no,data=share.data[share.data$nominate1< -.44,],alternative='less')
+t.test(incShare~no,data=share.data[share.data$nominate1<.474 & share.data$nominate1>0,],alternative='less')
+t.test(incShare~no,data=share.data[share.data$nominate1> -.444 & share.data$nominate1<0,],alternative='less')
+
+### Regression results ###
+full.reg<-lm(zincShare~no*nominate1+no*I(nominate1^2)+log_cash+inc_vote10+obama08*party,data=int.data); summary(full.reg)
+share.reg<-lm(zincShare~no*nominate1+no*I(nominate1^2)+log_cash+inc_vote10+obama08*party,data=share.data); summary(share.reg)
+
+#predicted effects by level of NOMINATE
+nom<-seq(-.744,.988,by=.01)
+effect.full<-full.reg$coef[2]+nom*full.reg$coef[9]+(nom^2)*full.reg$coef[10]
+effect.share<-share.reg$coef[2]+nom*share.reg$coef[9]+(nom^2)*share.reg$coef[10]
+
+#confidence intervals for effects (80% two-tailed, 90% one-tailed)
+#full population
+vcov.full<-summary(full.reg)$cov.unscaled*(summary(full.reg)$sigma^2)
+sqrt(diag(vcov.full))
+se.full<-sqrt(vcov.full[2,2]+(nom^2)*vcov.full[9,9]+(nom^4)*vcov.full[10,10]+2*nom*vcov.full[2,9]+2*(nom^2)*vcov.full[2,10]+2*(nom^3)*vcov.full[9,10])
+lower.full<-effect.full-1.28155*se.full
+upper.full<-effect.full+1.28155*se.full
+
+#matched sample
+vcov.share<-summary(full.reg)$cov.unscaled*(summary(full.reg)$sigma^2)
+sqrt(diag(vcov.share))
+se.share<-sqrt(vcov.share[2,2]+(nom^2)*vcov.share[9,9]+(nom^4)*vcov.share[10,10]+2*nom*vcov.share[2,9]+2*(nom^2)*vcov.share[2,10]+2*(nom^3)*vcov.share[9,10])
+lower.share<-effect.share-1.28155*se.share
+upper.share<-effect.share+1.28155*se.share
+
+#various graphs
+joint<-c(lower.full,upper.full,lower.share,upper.share)
+
+#pdf('condEffect.pdf',width=5,height=5,pointsize=10)
+plot(y=effect.full,x=nom,type='l',xlab="NOMINATE Score",ylab="Effect of No Vote",ylim=c(min(joint),max(joint)))
+lines(x=nom,y=effect.share,col='red',lty=2)
+legend(x=-.5,y=.25,lty=c(1,2),col=c('black','red'),legend=c('Full Population','Matched Sample'))
+#dev.off()
+
+#pdf('fullCondEffect.pdf',width=5,height=5,pointsize=10)
+plot(y=effect.full,x=nom,type='l',xlab="NOMINATE Score",ylab="Effect of No Vote",ylim=c(min(joint),max(joint)))
+#polygon(x=c(nom,rev(nom)), y=c(lower.full,rev(upper.full)),border=NA,col=rgb(.6,.6,.6,.3)) 
+lines(x=nom,y=lower.full,col='red',lty=2)
+#dev.off()
+
+#pdf('shareCondEffect.pdf',width=5,height=5,pointsize=10)
+plot(y=effect.share,x=nom,type='l',xlab="NOMINATE Score",ylab="Effect of No Vote",ylim=c(min(joint),max(joint)))
+#polygon(x=c(nom,rev(nom)), y=c(lower.share,rev(upper.share)),border=NA,col=rgb(.9,0,0,.3)) 
+lines(x=nom,y=lower.share,col='red',lty=2)
+#dev.off()
+
+#output table
+xtable(cbind(summary(full.reg)$coef[,1:2],summary(share.reg)$coef[,1:2]),digits=4)
+
